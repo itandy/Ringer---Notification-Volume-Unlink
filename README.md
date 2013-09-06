@@ -7,6 +7,6 @@ This is a Xposed module so your phone must be rooted to use it. The module is ba
 
 Installation instructions:
 1. Install the module
-2. Run Xposed Installer and enable the moduel Separate ringer & notification volume link in ICS/JB
+2. Run Xposed Installer and enable the module Separate ringer & notification volume link in ICS/JB
 3. Reboot the phone
 
