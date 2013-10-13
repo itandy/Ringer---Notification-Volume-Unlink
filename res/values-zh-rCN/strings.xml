@@ -1,5 +1,6 @@
-﻿<resources>
+<resources>
 
+    <string name="app_name">ICS/JB中铃声&amp;通知音量分离</string>
 	<string name="volume_ring_description">铃声</string>
     
 </resources>
