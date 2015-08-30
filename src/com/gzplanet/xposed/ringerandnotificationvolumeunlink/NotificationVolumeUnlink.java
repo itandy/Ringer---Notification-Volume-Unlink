@@ -331,7 +331,7 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 								mNotifSeekbarVolumizer.stopSample();
 						}
 					});
-				} catch (Exception e) {
+				} catch (XposedHelpers.ClassNotFoundError e) {
 				}
 			}
 		}
