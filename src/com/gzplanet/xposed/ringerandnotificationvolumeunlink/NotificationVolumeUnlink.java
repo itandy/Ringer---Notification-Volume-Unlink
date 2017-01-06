@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.preference.Preference;
 import android.preference.PreferenceCategory;
+import android.preference.PreferenceScreen;
 import android.preference.SeekBarVolumizer;
 import android.util.TypedValue;
 import android.view.View;
@@ -41,14 +42,18 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 	final static String CLASSNAME_VOLUMEDIALOGCONTROLLER = "com.android.systemui.volume.VolumeDialogController";
 	final static String CLASSNAME_ZENMODECONTROLLER = "com.android.systemui.statusbar.policy.ZenModeController";
 	final static String CLASSNAME_CALLBACK = "com.android.systemui.volume.VolumeDialog.Callback";
+	final static String CLASSNAME_VOLUMEROW = "com.android.systemui.volume.VolumeDialog.VolumeRow";
 
-	/* The audio stream for notifications */
+	/* The audio stream for ringer & notifications */
+	final static int STREAM_RINGER = 2;
 	final static int STREAM_NOTIFICATION = 5;
 
 	private static final String TAG_NOTIFICATION_SLIDER = "NOTIFICATION_SLIDER";
 	private static final String KEY_SOUND = "sound";
 	private static final String KEY_NOTIFICATION_VOLUME = "notification_volume";
 	private static final String KEY_RING_VOLUME = "ring_volume";
+	private static final String KEY_VIBRATE_WHEN_RINGING = "vibrate_when_ringing";
+	private static final String KEY_ROOT = "notification_settings";
 	private static final String VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION";
 	private static final String INTERNAL_RINGER_MODE_CHANGED_ACTION = "android.media.INTERNAL_RINGER_MODE_CHANGED_ACTION";
 	private static final String ACTION_INTERRUPTION_FILTER_CHANGED = "android.app.action.INTERRUPTION_FILTER_CHANGED";
@@ -64,6 +69,7 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 	private SeekBar mSeekBar;
 	private Context mContext;
 	private ImageView mNotifImg;
+	private int mMuteIconId;
 
 	@Override
 	public void initZygote(StartupParam startupParam) {
@@ -181,14 +187,13 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 									int iconId;
 									int titleId = context.getResources().getIdentifier(
 											"notification_volume_option_title", "string", PKGNAME_SETTINGS);
-									int muteIconId = 0;
 									if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1) {
-										muteIconId = context.getResources().getIdentifier("ic_audio_notification_mute",
+										mMuteIconId = context.getResources().getIdentifier("ic_audio_notification_mute",
 												"drawable", "android");
 										iconId = context.getResources().getIdentifier("ic_audio_notification",
 												"drawable", "android");
 									} else if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
-										muteIconId = context.getResources().getIdentifier("ic_audio_ring_notif_mute",
+										mMuteIconId = context.getResources().getIdentifier("ic_audio_ring_notif_mute",
 												"drawable", "android");
 										iconId = context.getResources().getIdentifier("ic_audio_ring_notif",
 												"drawable", "android");
@@ -223,7 +228,7 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 											XposedHelpers.callMethod(mNotificationVolume, "setTitle", titleId);
 										if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP)
 											XposedHelpers.callMethod(param.thisObject, "initVolumePreference",
-													KEY_NOTIFICATION_VOLUME, STREAM_NOTIFICATION, muteIconId);
+													KEY_NOTIFICATION_VOLUME, STREAM_NOTIFICATION, mMuteIconId);
 										else
 											XposedHelpers.callMethod(param.thisObject, "initVolumePreference",
 													KEY_NOTIFICATION_VOLUME, STREAM_NOTIFICATION);
@@ -233,6 +238,45 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 								}
 							}
 						});
+
+				/* Xperia 6.0 ROM only */
+				try {
+					XposedHelpers.findAndHookMethod("com.android.settings.notification.NotificationSettings",
+							lpparam.classLoader, "refreshSomcVolumePrefs", new XC_MethodHook() {
+								@Override
+								protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+									PreferenceScreen root = (PreferenceScreen) XposedHelpers.callMethod(param.thisObject, "findPreference", KEY_ROOT);
+
+									Preference prefNotification = root.findPreference(KEY_NOTIFICATION_VOLUME);
+									Preference prefRinger = root.findPreference(KEY_RING_VOLUME);
+									Preference prefVibrateWhenRing = root.findPreference(KEY_VIBRATE_WHEN_RINGING);
+
+									if (prefNotification == null && mNotificationVolume != null) {
+										int order = prefRinger.getOrder();
+										XposedHelpers.callMethod(mNotificationVolume, "setOrder", order+1);
+
+										if (prefVibrateWhenRing != null) {
+											root.removePreference(prefVibrateWhenRing);
+											XposedHelpers.callMethod(prefVibrateWhenRing, "setOrder", order+2);
+										}
+
+										root.addPreference((Preference) mNotificationVolume);
+
+										if (prefVibrateWhenRing != null)
+											root.addPreference(prefVibrateWhenRing);
+
+										XposedHelpers.callMethod(param.thisObject, "initVolumePreference",
+													KEY_NOTIFICATION_VOLUME, STREAM_NOTIFICATION, mMuteIconId);
+
+										//XposedBridge.log("Notification preference added completely");
+									}
+								}
+							});
+				} catch (NoSuchMethodError e) {
+					XposedBridge.log("Method refreshSomcVolumePrefs not found");
+				} catch (Throwable t) {
+					XposedBridge.log(t);
+				}
 			} else {
 				// Android 4.4.4 or lower
 				XposedHelpers.findAndHookMethod("com.android.settings.RingerVolumePreference", lpparam.classLoader,
@@ -419,6 +463,7 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 				}
 			}
 
+			// Android 6.0 or higher
 			if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1) {
 				try {
 					XposedHelpers.findClass(CLASSNAME_VOLUMEDIALOG, lpparam.classLoader);
@@ -429,6 +474,7 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 					final Class<?> classZenModeController = XposedHelpers.findClass(CLASSNAME_ZENMODECONTROLLER,
 							lpparam.classLoader);
 					final Class<?> classCallback = XposedHelpers.findClass(CLASSNAME_CALLBACK, lpparam.classLoader);
+					final Class<?> classVolumeRow = XposedHelpers.findClass(CLASSNAME_VOLUMEROW, lpparam.classLoader);
 
 					XposedHelpers.findAndHookConstructor(CLASSNAME_VOLUMEDIALOG, lpparam.classLoader, Context.class,
 							int.class, classVolumeDialogController, classZenModeController, classCallback,
@@ -448,7 +494,26 @@ public class NotificationVolumeUnlink implements IXposedHookZygoteInit, IXposedH
 								}
 
 							});
+
+					XposedHelpers.findAndHookMethod(CLASSNAME_VOLUMEDIALOG, lpparam.classLoader, "updateVolumeRowH", classVolumeRow,
+							new XC_MethodHook() {
+								@Override
+								protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+									//XposedBridge.log("VolumeDialog:updateVolumeRowH");
+
+									int stream = (int)XposedHelpers.getObjectField(param.args[0], "stream");
+									TextView tv = (TextView)XposedHelpers.getObjectField(param.args[0], "header");
+									if (stream == STREAM_NOTIFICATION)
+										tv.setText("Notification volume");
+									else if (stream == STREAM_RINGER)
+										tv.setText("Ring volume");
+								}
+
+							});
 				} catch (ClassNotFoundError e) {
+					XposedBridge.log("Class systemui.volume.VolumeDialog not found");
+				} catch (NoSuchMethodError e1) {
+					XposedBridge.log("Method systemui.volume.VolumeDialog.updateVolumeRowH not found");
 				}
 			}
 		} else if (lpparam.packageName.equals(PKGNAME_SYSTEM_SERVICE)) {
