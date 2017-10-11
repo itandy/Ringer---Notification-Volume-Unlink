@@ -1,11 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.gzplanet.xposed.ringerandnotificationvolumeunlink"
-    android:versionCode="140"
-    android:versionName="1.40" >
+    android:versionCode="150"
+    android:versionName="1.50" >
 
     <uses-sdk
         android:minSdkVersion="14"
-        android:targetSdkVersion="22" />
+        android:targetSdkVersion="25" />
 
     <application
         android:allowBackup="true"
@@ -19,7 +19,7 @@
             android:value="2.0*" />
         <meta-data
             android:name="xposeddescription"
-            android:value="Separate ringer &amp; notification volume link in ICS/JB/KK/LP/MM" />
+            android:value="Separate ringer &amp; notification volume link" />
     </application>
 
 </manifest>
